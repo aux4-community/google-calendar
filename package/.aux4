@@ -1,7 +1,7 @@
 {
   "scope": "community",
   "name": "google-calendar",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Commands to interact with Google Calendar using the Calendar API v3",
   "license": "MIT",
   "tags": [
