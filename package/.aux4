@@ -1,0 +1,522 @@
+{
+  "scope": "community",
+  "name": "google-calendar",
+  "version": "1.0.0",
+  "description": "Commands to interact with Google Calendar using the Calendar API v3",
+  "license": "MIT",
+  "tags": [
+    "google",
+    "calendar",
+    "google-calendar",
+    "events",
+    "scheduling",
+    "cli"
+  ],
+  "dependencies": [
+    "community/google-auth",
+    "aux4/curl"
+  ],
+  "system": [
+    [
+      "test:jq --version",
+      "brew:jq",
+      "linux:jq"
+    ]
+  ],
+  "profiles": [
+    {
+      "name": "main",
+      "commands": [
+        {
+          "name": "google",
+          "execute": [
+            "profile:google"
+          ],
+          "help": {
+            "text": "Google commands"
+          }
+        }
+      ]
+    },
+    {
+      "name": "google",
+      "commands": [
+        {
+          "name": "calendar",
+          "execute": [
+            "profile:google:calendar"
+          ],
+          "help": {
+            "text": "Google Calendar commands"
+          }
+        }
+      ]
+    },
+    {
+      "name": "google:calendar",
+      "commands": [
+        {
+          "name": "services",
+          "private": true,
+          "execute": [
+            "echo '{\"name\":\"calendar\",\"scope\":\"https://www.googleapis.com/auth/calendar\",\"readonlyScope\":\"https://www.googleapis.com/auth/calendar.readonly\",\"description\":\"Read and manage Google Calendar events\"}'"
+          ],
+          "help": {
+            "text": "Output service metadata for auth resolution"
+          }
+        },
+        {
+          "name": "calendars",
+          "execute": [
+            "profile:google:calendar:calendars"
+          ],
+          "help": {
+            "text": "Manage calendars on the calendar list"
+          }
+        },
+        {
+          "name": "events",
+          "execute": [
+            "profile:google:calendar:events"
+          ],
+          "help": {
+            "text": "Manage events on a calendar"
+          }
+        },
+        {
+          "name": "freebusy",
+          "execute": [
+            "set:itemList=!CALENDARS=value(calendars) jq -rn 'env.CALENDARS | split(\",\") | map(select(. != \"\") | {id: (. | gsub(\"^ +| +$\"; \"\"))}) | if length == 0 then \"\" else tojson end'",
+            "set:requestPath=/freeBusy",
+            "set:requestUrl=${apiUrl}${requestPath}",
+            "aux4 curl auth-request --provider google param(tokenFile) --method POST --header 'Content-Type: application/json' --url value(requestUrl) --body 'object(timeMin, timeMax, itemList:items)'"
+          ],
+          "help": {
+            "text": "Query free/busy information for a set of calendars",
+            "variables": [
+              {
+                "name": "timeMin",
+                "text": "Start of the interval (RFC3339 timestamp, e.g. 2026-01-01T00:00:00Z)"
+              },
+              {
+                "name": "timeMax",
+                "text": "End of the interval (RFC3339 timestamp, e.g. 2026-01-02T00:00:00Z)"
+              },
+              {
+                "name": "calendars",
+                "text": "Comma-separated calendar IDs to query (e.g. primary,team@group.calendar.google.com)",
+                "default": "primary"
+              },
+              {
+                "name": "itemList",
+                "text": "Calendars as a JSON array of {id}, derived from --calendars",
+                "default": "",
+                "type": "json",
+                "private": true
+              },
+              {
+                "name": "tokenFile",
+                "text": "Where the Google OAuth token is stored",
+                "default": "${aux4HomeDir}/.oauth/google.json",
+                "env": "AUX4_GOOGLE_TOKEN_FILE"
+              },
+              {
+                "name": "apiUrl",
+                "text": "Calendar API base URL",
+                "default": "https://www.googleapis.com/calendar/v3",
+                "env": "CALENDAR_API_URL",
+                "private": true
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "google:calendar:calendars",
+      "commands": [
+        {
+          "name": "list",
+          "execute": [
+            "set:requestPath=/users/me/calendarList",
+            "set:requestUrl=${apiUrl}${requestPath}",
+            "aux4 curl auth-request --provider google param(tokenFile) --url value(requestUrl)"
+          ],
+          "help": {
+            "text": "List the calendars on the user's calendar list",
+            "variables": [
+              {
+                "name": "tokenFile",
+                "text": "Where the Google OAuth token is stored",
+                "default": "${aux4HomeDir}/.oauth/google.json",
+                "env": "AUX4_GOOGLE_TOKEN_FILE"
+              },
+              {
+                "name": "apiUrl",
+                "text": "Calendar API base URL",
+                "default": "https://www.googleapis.com/calendar/v3",
+                "env": "CALENDAR_API_URL",
+                "private": true
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "google:calendar:events",
+      "commands": [
+        {
+          "name": "list",
+          "execute": [
+            "set:queryString=!TMIN=value(timeMin) TMAX=value(timeMax) Q=value(query) MAXR=value(maxResults) SE=value(singleEvents) OB=value(orderBy) jq -rn '[{k:\"timeMin\",v:env.TMIN},{k:\"timeMax\",v:env.TMAX},{k:\"q\",v:env.Q},{k:\"maxResults\",v:env.MAXR},{k:\"singleEvents\",v:env.SE},{k:\"orderBy\",v:env.OB}] | map(select(.v != \"\")) | map(\"\\(.k)=\\(.v|@uri)\") | if length == 0 then \"\" else \"?\" + join(\"&\") end'",
+            "set:requestUrl=${apiUrl}/calendars/${calendarId}/events${queryString}",
+            "aux4 curl auth-request --provider google param(tokenFile) --url value(requestUrl)"
+          ],
+          "help": {
+            "text": "List events on a calendar",
+            "variables": [
+              {
+                "name": "calendarId",
+                "text": "Calendar ID (e.g. primary or an email address)",
+                "default": "primary"
+              },
+              {
+                "name": "timeMin",
+                "text": "Lower bound (inclusive) for an event's end time (RFC3339 timestamp)",
+                "default": ""
+              },
+              {
+                "name": "timeMax",
+                "text": "Upper bound (exclusive) for an event's start time (RFC3339 timestamp)",
+                "default": ""
+              },
+              {
+                "name": "query",
+                "text": "Free-text search terms to find matching events",
+                "default": ""
+              },
+              {
+                "name": "maxResults",
+                "text": "Maximum number of events returned on one result page",
+                "default": ""
+              },
+              {
+                "name": "singleEvents",
+                "text": "Expand recurring events into single instances (true or false)",
+                "default": ""
+              },
+              {
+                "name": "orderBy",
+                "text": "Order of the events returned (startTime or updated)",
+                "default": ""
+              },
+              {
+                "name": "tokenFile",
+                "text": "Where the Google OAuth token is stored",
+                "default": "${aux4HomeDir}/.oauth/google.json",
+                "env": "AUX4_GOOGLE_TOKEN_FILE"
+              },
+              {
+                "name": "apiUrl",
+                "text": "Calendar API base URL",
+                "default": "https://www.googleapis.com/calendar/v3",
+                "env": "CALENDAR_API_URL",
+                "private": true
+              }
+            ]
+          }
+        },
+        {
+          "name": "get",
+          "execute": [
+            "set:requestUrl=${apiUrl}/calendars/${calendarId}/events/${eventId}",
+            "aux4 curl auth-request --provider google param(tokenFile) --url value(requestUrl)"
+          ],
+          "help": {
+            "text": "Get a single event by ID",
+            "variables": [
+              {
+                "name": "eventId",
+                "text": "Event ID",
+                "arg": true
+              },
+              {
+                "name": "calendarId",
+                "text": "Calendar ID (e.g. primary or an email address)",
+                "default": "primary"
+              },
+              {
+                "name": "tokenFile",
+                "text": "Where the Google OAuth token is stored",
+                "default": "${aux4HomeDir}/.oauth/google.json",
+                "env": "AUX4_GOOGLE_TOKEN_FILE"
+              },
+              {
+                "name": "apiUrl",
+                "text": "Calendar API base URL",
+                "default": "https://www.googleapis.com/calendar/v3",
+                "env": "CALENDAR_API_URL",
+                "private": true
+              }
+            ]
+          }
+        },
+        {
+          "name": "create",
+          "execute": [
+            "set:startObj=!START=value(start) TZ=value(timeZone) jq -rn 'env.START as $s | if $s == \"\" then \"\" else ((if ($s | test(\"^[0-9]{4}-[0-9]{2}-[0-9]{2}$\")) then {date: $s} else ({dateTime: $s} + (if env.TZ == \"\" then {} else {timeZone: env.TZ} end)) end) | tojson) end'",
+            "set:endObj=!END=value(end) TZ=value(timeZone) jq -rn 'env.END as $s | if $s == \"\" then \"\" else ((if ($s | test(\"^[0-9]{4}-[0-9]{2}-[0-9]{2}$\")) then {date: $s} else ({dateTime: $s} + (if env.TZ == \"\" then {} else {timeZone: env.TZ} end)) end) | tojson) end'",
+            "set:attendeeList=!ATTENDEES=value(attendees) jq -rn 'env.ATTENDEES | split(\",\") | map(select(. != \"\") | {email: (. | gsub(\"^ +| +$\"; \"\"))}) | if length == 0 then \"\" else tojson end'",
+            "set:requestUrl=${apiUrl}/calendars/${calendarId}/events",
+            "aux4 curl auth-request --provider google param(tokenFile) --method POST --header 'Content-Type: application/json' --url value(requestUrl) --body 'object(summary, description, location, startObj:start, endObj:end, attendeeList:attendees)'"
+          ],
+          "help": {
+            "text": "Create an event on a calendar",
+            "variables": [
+              {
+                "name": "calendarId",
+                "text": "Calendar ID (e.g. primary or an email address)",
+                "default": "primary"
+              },
+              {
+                "name": "summary",
+                "text": "Event title",
+                "default": ""
+              },
+              {
+                "name": "description",
+                "text": "Event description",
+                "default": ""
+              },
+              {
+                "name": "location",
+                "text": "Event location",
+                "default": ""
+              },
+              {
+                "name": "start",
+                "text": "Event start (RFC3339 dateTime, e.g. 2026-01-01T09:00:00, or a date YYYY-MM-DD for an all-day event)",
+                "default": ""
+              },
+              {
+                "name": "end",
+                "text": "Event end (RFC3339 dateTime, e.g. 2026-01-01T10:00:00, or a date YYYY-MM-DD for an all-day event)",
+                "default": ""
+              },
+              {
+                "name": "timeZone",
+                "text": "IANA time zone for the start and end times (e.g. America/New_York)",
+                "default": ""
+              },
+              {
+                "name": "attendees",
+                "text": "Comma-separated attendee email addresses",
+                "default": ""
+              },
+              {
+                "name": "startObj",
+                "text": "Event start as a JSON object, derived from --start and --timeZone",
+                "default": "",
+                "type": "json",
+                "private": true
+              },
+              {
+                "name": "endObj",
+                "text": "Event end as a JSON object, derived from --end and --timeZone",
+                "default": "",
+                "type": "json",
+                "private": true
+              },
+              {
+                "name": "attendeeList",
+                "text": "Attendees as a JSON array of {email}, derived from --attendees",
+                "default": "",
+                "type": "json",
+                "private": true
+              },
+              {
+                "name": "tokenFile",
+                "text": "Where the Google OAuth token is stored",
+                "default": "${aux4HomeDir}/.oauth/google.json",
+                "env": "AUX4_GOOGLE_TOKEN_FILE"
+              },
+              {
+                "name": "apiUrl",
+                "text": "Calendar API base URL",
+                "default": "https://www.googleapis.com/calendar/v3",
+                "env": "CALENDAR_API_URL",
+                "private": true
+              }
+            ]
+          }
+        },
+        {
+          "name": "update",
+          "execute": [
+            "set:startObj=!START=value(start) TZ=value(timeZone) jq -rn 'env.START as $s | if $s == \"\" then \"\" else ((if ($s | test(\"^[0-9]{4}-[0-9]{2}-[0-9]{2}$\")) then {date: $s} else ({dateTime: $s} + (if env.TZ == \"\" then {} else {timeZone: env.TZ} end)) end) | tojson) end'",
+            "set:endObj=!END=value(end) TZ=value(timeZone) jq -rn 'env.END as $s | if $s == \"\" then \"\" else ((if ($s | test(\"^[0-9]{4}-[0-9]{2}-[0-9]{2}$\")) then {date: $s} else ({dateTime: $s} + (if env.TZ == \"\" then {} else {timeZone: env.TZ} end)) end) | tojson) end'",
+            "set:attendeeList=!ATTENDEES=value(attendees) jq -rn 'env.ATTENDEES | split(\",\") | map(select(. != \"\") | {email: (. | gsub(\"^ +| +$\"; \"\"))}) | if length == 0 then \"\" else tojson end'",
+            "set:requestUrl=${apiUrl}/calendars/${calendarId}/events/${eventId}",
+            "aux4 curl auth-request --provider google param(tokenFile) --method PATCH --header 'Content-Type: application/json' --url value(requestUrl) --body 'object(summary, description, location, startObj:start, endObj:end, attendeeList:attendees)'"
+          ],
+          "help": {
+            "text": "Update an existing event (PATCH semantics — only the fields you pass change)",
+            "variables": [
+              {
+                "name": "eventId",
+                "text": "Event ID",
+                "arg": true
+              },
+              {
+                "name": "calendarId",
+                "text": "Calendar ID (e.g. primary or an email address)",
+                "default": "primary"
+              },
+              {
+                "name": "summary",
+                "text": "Event title",
+                "default": ""
+              },
+              {
+                "name": "description",
+                "text": "Event description",
+                "default": ""
+              },
+              {
+                "name": "location",
+                "text": "Event location",
+                "default": ""
+              },
+              {
+                "name": "start",
+                "text": "Event start (RFC3339 dateTime, e.g. 2026-01-01T09:00:00, or a date YYYY-MM-DD for an all-day event)",
+                "default": ""
+              },
+              {
+                "name": "end",
+                "text": "Event end (RFC3339 dateTime, e.g. 2026-01-01T10:00:00, or a date YYYY-MM-DD for an all-day event)",
+                "default": ""
+              },
+              {
+                "name": "timeZone",
+                "text": "IANA time zone for the start and end times (e.g. America/New_York)",
+                "default": ""
+              },
+              {
+                "name": "attendees",
+                "text": "Comma-separated attendee email addresses",
+                "default": ""
+              },
+              {
+                "name": "startObj",
+                "text": "Event start as a JSON object, derived from --start and --timeZone",
+                "default": "",
+                "type": "json",
+                "private": true
+              },
+              {
+                "name": "endObj",
+                "text": "Event end as a JSON object, derived from --end and --timeZone",
+                "default": "",
+                "type": "json",
+                "private": true
+              },
+              {
+                "name": "attendeeList",
+                "text": "Attendees as a JSON array of {email}, derived from --attendees",
+                "default": "",
+                "type": "json",
+                "private": true
+              },
+              {
+                "name": "tokenFile",
+                "text": "Where the Google OAuth token is stored",
+                "default": "${aux4HomeDir}/.oauth/google.json",
+                "env": "AUX4_GOOGLE_TOKEN_FILE"
+              },
+              {
+                "name": "apiUrl",
+                "text": "Calendar API base URL",
+                "default": "https://www.googleapis.com/calendar/v3",
+                "env": "CALENDAR_API_URL",
+                "private": true
+              }
+            ]
+          }
+        },
+        {
+          "name": "delete",
+          "execute": [
+            "set:requestUrl=${apiUrl}/calendars/${calendarId}/events/${eventId}",
+            "aux4 curl auth-request --provider google param(tokenFile) --method DELETE --url value(requestUrl)"
+          ],
+          "help": {
+            "text": "Delete an event by ID",
+            "variables": [
+              {
+                "name": "eventId",
+                "text": "Event ID",
+                "arg": true
+              },
+              {
+                "name": "calendarId",
+                "text": "Calendar ID (e.g. primary or an email address)",
+                "default": "primary"
+              },
+              {
+                "name": "tokenFile",
+                "text": "Where the Google OAuth token is stored",
+                "default": "${aux4HomeDir}/.oauth/google.json",
+                "env": "AUX4_GOOGLE_TOKEN_FILE"
+              },
+              {
+                "name": "apiUrl",
+                "text": "Calendar API base URL",
+                "default": "https://www.googleapis.com/calendar/v3",
+                "env": "CALENDAR_API_URL",
+                "private": true
+              }
+            ]
+          }
+        },
+        {
+          "name": "quick-add",
+          "execute": [
+            "set:textEncoded=!TEXT=value(text) jq -rn 'env.TEXT | @uri'",
+            "set:requestUrl=${apiUrl}/calendars/${calendarId}/events/quickAdd?text=${textEncoded}",
+            "aux4 curl auth-request --provider google param(tokenFile) --method POST --header 'Content-Type: application/json' --url value(requestUrl)"
+          ],
+          "help": {
+            "text": "Create an event from a natural-language description",
+            "variables": [
+              {
+                "name": "text",
+                "text": "Natural-language event description (e.g. 'Lunch with Sally tomorrow at noon')",
+                "arg": true
+              },
+              {
+                "name": "calendarId",
+                "text": "Calendar ID (e.g. primary or an email address)",
+                "default": "primary"
+              },
+              {
+                "name": "tokenFile",
+                "text": "Where the Google OAuth token is stored",
+                "default": "${aux4HomeDir}/.oauth/google.json",
+                "env": "AUX4_GOOGLE_TOKEN_FILE"
+              },
+              {
+                "name": "apiUrl",
+                "text": "Calendar API base URL",
+                "default": "https://www.googleapis.com/calendar/v3",
+                "env": "CALENDAR_API_URL",
+                "private": true
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
