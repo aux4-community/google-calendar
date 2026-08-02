@@ -1,17 +1,18 @@
 # google calendar calendars list
 
-Part of the `core` group in `test.suite.md`. The Calendar API is replaced by a local
-echo server (`mock-echo.js`), so the test asserts the request aux4 builds — method,
-path and `Authorization` header — without needing a real Google account.
+Part of the `core` group in `test.suite.md`. The Calendar API is replaced by an
+`aux4/mock` server: the test stubs a realistic `calendarList` response and then verifies
+the request aux4 built — method, path and `Authorization` header — without a real Google
+account.
 
 ## against a local mock API
 
 ```beforeAll
-nohup node mock-echo.js 18980 >/dev/null 2>&1 &
-for i in $(seq 1 40); do curl -s -o /dev/null http://127.0.0.1:18980/ 2>/dev/null && break; sleep 0.25; done
+aux4 aux4 pkger install aux4/mock
 ```
 
 ```afterAll
+aux4 mock stop --port 18980 2>/dev/null
 pkill -f "18980" 2>/dev/null
 ```
 
@@ -28,22 +29,31 @@ pkill -f "18980" 2>/dev/null
 }
 ```
 
-### should GET the calendarList endpoint with a bearer token
+### should GET the calendarList endpoint and return the stubbed calendars
 
 ```execute
-aux4 google calendar calendars list --tokenFile google-token.json --apiUrl http://127.0.0.1:18980
+aux4 mock start --port 18980 >/dev/null 2>&1
+sleep 1
+aux4 mock stub --port 18980 --method GET --path /users/me/calendarList --status 200 --body '{"kind":"calendar#calendarList","items":[{"kind":"calendar#calendarListEntry","id":"primary","summary":"Sally","primary":true,"accessRole":"owner"}]}' >/dev/null
+aux4 google calendar calendars list --tokenFile google-token.json --apiUrl http://127.0.0.1:18980/api
 ```
 
 ```expect:partial
-"authorization": "Bearer test-access-token"
+"kind":"calendar#calendarList"
 ```
 
 ```expect:partial
-"method": "GET"
+"id":"primary"
+```
+
+### should send a GET with a bearer token to the calendarList endpoint
+
+```execute
+aux4 mock verify --port 18980 --method GET --path /users/me/calendarList --header "authorization=Bearer test-access-token"
 ```
 
 ```expect:partial
-"path": "/users/me/calendarList"
+verify ok
 ```
 
 ## without a stored token
@@ -51,7 +61,7 @@ aux4 google calendar calendars list --tokenFile google-token.json --apiUrl http:
 ### should report that the google provider has no token
 
 ```execute
-aux4 google calendar calendars list --tokenFile ./no-such-directory/google.json --apiUrl http://127.0.0.1:18980
+aux4 google calendar calendars list --tokenFile ./no-such-directory/google.json --apiUrl http://127.0.0.1:18980/api
 ```
 
 ```error:partial
