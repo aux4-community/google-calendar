@@ -12,14 +12,6 @@ Authentication is handled by [community/google-auth](https://hub.aux4.io/package
 aux4 aux4 pkger install community/google-calendar
 ```
 
-## System Dependencies
-
-This package requires:
-
-- **jq** — for building event bodies and query strings from flags
-  - [brew](https://brew.sh): `brew install jq`
-  - linux: `apt install jq`
-
 ## Prerequisites
 
 Authenticate once with `community/google-auth`. The scopes are resolved from the installed Google service packages, so no `--scopes` flag is needed:
